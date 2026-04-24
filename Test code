@@ -3,9 +3,12 @@
 # CLI VERSION: Q-Learning + Unbeatable (Minimax) + Save/Load + Graphs
 # =============================
 
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import scipy as sp
 import random
 import pickle
-import matplotlib.pyplot as plt
 
 # =============================
 # CONFIG
