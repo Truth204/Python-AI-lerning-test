@@ -1,0 +1,244 @@
+# =============================
+# TIC-TAC-TOE SELF-LEARNING AI (NO TKINTER)
+# CLI VERSION: Q-Learning + Unbeatable (Minimax) + Save/Load + Graphs
+# =============================
+
+import random
+import pickle
+import matplotlib.pyplot as plt
+
+# =============================
+# CONFIG
+# =============================
+ACTIONS = list(range(9))
+alpha = 0.2
+gamma = 0.95
+epsilon = 0.2
+
+Q = {}
+rewards_per_episode = []
+
+# =============================
+# BOARD FUNCTIONS
+# =============================
+
+def empty_board():
+    return [' '] * 9
+
+
+def print_board(board):
+    print(f"\n{board[0]} | {board[1]} | {board[2]}")
+    print("--+---+--")
+    print(f"{board[3]} | {board[4]} | {board[5]}")
+    print("--+---+--")
+    print(f"{board[6]} | {board[7]} | {board[8]}\n")
+
+
+def state_key(board):
+    return ''.join(board)
+
+
+def available_actions(board):
+    return [i for i, v in enumerate(board) if v == ' ']
+
+
+def check_winner(board):
+    lines = [
+        (0,1,2),(3,4,5),(6,7,8),
+        (0,3,6),(1,4,7),(2,5,8),
+        (0,4,8),(2,4,6)
+    ]
+    for a,b,c in lines:
+        if board[a] != ' ' and board[a] == board[b] == board[c]:
+            return board[a]
+    if ' ' not in board:
+        return 'Draw'
+    return None
+
+# =============================
+# Q-LEARNING
+# =============================
+
+def init_state(s):
+    if s not in Q:
+        Q[s] = {a: 0.0 for a in ACTIONS}
+
+
+def choose_action(board):
+    s = state_key(board)
+    init_state(s)
+    valid = available_actions(board)
+
+    if random.random() < epsilon:
+        return random.choice(valid)
+
+    return max(valid, key=lambda a: Q[s].get(a, 0))
+
+
+def q_update(s, a, r, s_next, done):
+    init_state(s)
+    init_state(s_next)
+    best_next = 0 if done else max(Q[s_next].values())
+    Q[s][a] += alpha * (r + gamma * best_next - Q[s][a])
+
+# =============================
+# MINIMAX (UNBEATABLE)
+# =============================
+
+def minimax(board, is_max):
+    winner = check_winner(board)
+    if winner == 'O': return 1
+    if winner == 'X': return -1
+    if winner == 'Draw': return 0
+
+    if is_max:
+        best = -999
+        for a in available_actions(board):
+            board[a] = 'O'
+            best = max(best, minimax(board, False))
+            board[a] = ' '
+        return best
+    else:
+        best = 999
+        for a in available_actions(board):
+            board[a] = 'X'
+            best = min(best, minimax(board, True))
+            board[a] = ' '
+        return best
+
+
+def best_move_minimax(board):
+    best_val = -999
+    move = None
+    for a in available_actions(board):
+        board[a] = 'O'
+        val = minimax(board, False)
+        board[a] = ' '
+        if val > best_val:
+            best_val = val
+            move = a
+    return move
+
+# =============================
+# TRAINING
+# =============================
+
+def play_episode():
+    board = empty_board()
+    s = state_key(board)
+    total = 0
+
+    while True:
+        a = choose_action(board)
+        board[a] = 'X'
+        s_next = state_key(board)
+        winner = check_winner(board)
+
+        if winner:
+            r = 1 if winner == 'X' else 0 if winner == 'Draw' else -1
+            q_update(s, a, r, s_next, True)
+            total += r
+            break
+
+        a2 = random.choice(available_actions(board))
+        board[a2] = 'O'
+        s_next2 = state_key(board)
+        winner = check_winner(board)
+
+        if winner:
+            r = 1 if winner == 'X' else 0 if winner == 'Draw' else -1
+            q_update(s, a, r, s_next2, True)
+            total += r
+            break
+
+        q_update(s, a, 0, s_next2, False)
+        s = s_next2
+
+    return total
+
+
+def train(n=5000):
+    global rewards_per_episode
+    rewards_per_episode = []
+    for _ in range(n):
+        rewards_per_episode.append(play_episode())
+    print("Training done")
+
+# =============================
+# SAVE / LOAD
+# =============================
+
+def save():
+    with open('q.pkl','wb') as f:
+        pickle.dump(Q,f)
+
+
+def load():
+    global Q
+    try:
+        with open('q.pkl','rb') as f:
+            Q = pickle.load(f)
+    except:
+        print("No save found")
+
+# =============================
+# GRAPH
+# =============================
+
+def plot():
+    plt.plot(rewards_per_episode)
+    plt.title("Training")
+    plt.show()
+
+# =============================
+# CLI GAME
+# =============================
+
+def play(mode='q'):
+    board = empty_board()
+
+    while True:
+        print_board(board)
+
+        move = int(input("Enter position (0-8): "))
+        if board[move] != ' ':
+            print("Invalid move")
+            continue
+
+        board[move] = 'X'
+        if check_winner(board): break
+
+        if mode == 'm':
+            ai = best_move_minimax(board)
+        else:
+            ai = choose_action(board)
+
+        board[ai] = 'O'
+        if check_winner(board): break
+
+    print_board(board)
+    print("Result:", check_winner(board))
+
+# =============================
+# MAIN MENU
+# =============================
+
+if __name__ == '__main__':
+    while True:
+        print("\n1. Train AI")
+        print("2. Play (Q-learning)")
+        print("3. Play (Unbeatable)")
+        print("4. Plot graph")
+        print("5. Save")
+        print("6. Load")
+        print("0. Exit")
+
+        choice = input("Choose: ")
+
+        if choice == '1': train()
+        elif choice == '2': play('q')
+        elif choice == '3': play('m')
+        elif choice == '4': plot()
+        elif choice == '5': save()
+        elif choice == '6': load()
+        elif choice == '0': break
