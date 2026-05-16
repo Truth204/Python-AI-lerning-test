@@ -1,0 +1,246 @@
+# =========================================================
+# NEURAL NETWORK PONG AI
+# Deep Q-Learning (DQN) - NO PYGAME
+# ===============================================
+# REQUIREMENTS:
+# pip install torch numpy
+#
+# RUN:
+# python neural_pong_ai.py
+# =========================================================
+
+import random
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+# =========================================================
+# GAME SETTINGS
+# =========================================================
+HEIGHT = 20
+WIDTH = 80
+PADDLE_SIZE = 4
+
+player_y = 8
+ai_y = 8
+
+ball_x = WIDTH // 2
+ball_y = HEIGHT // 2
+
+ball_dx = -1
+ball_dy = 1
+
+# =========================================================
+# AI SETTINGS
+# =========================================================
+ACTIONS = 3  # up, down, stay
+
+gamma = 0.9
+epsilon = 1.0
+epsilon_decay = 0.995
+epsilon_min = 0.01
+learning_rate = 0.001
+
+# =========================================================
+# NEURAL NETWORK
+# =========================================================
+class DQN(nn.Module):
+    def __init__(self):
+        super(DQN, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(4, 64),
+            nn.ReLU(),
+
+            nn.Linear(64, 64),
+            nn.ReLU(),
+
+            nn.Linear(64, ACTIONS)
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+network = DQN()
+optimizer = optim.Adam(network.parameters(), lr=learning_rate)
+loss_fn = nn.MSELoss()
+
+# =========================================================
+# GET STATE
+# =========================================================
+def get_state():
+    return np.array([
+        ball_y / HEIGHT,
+        ai_y / HEIGHT,
+        ball_dx,
+        ball_dy
+    ], dtype=np.float32)
+
+# =========================================================
+# CHOOSE ACTION
+# =========================================================
+def choose_action(state):
+    global epsilon
+
+    if random.random() < epsilon:
+        return random.randint(0, 2)
+
+    state_tensor = torch.FloatTensor(state)
+
+    with torch.no_grad():
+        q_values = network(state_tensor)
+
+    return torch.argmax(q_values).item()
+
+# =========================================================
+# TRAIN STEP
+# =========================================================
+def train_step(state, action, reward, next_state):
+
+    state_tensor = torch.FloatTensor(state)
+    next_tensor = torch.FloatTensor(next_state)
+
+    q_values = network(state_tensor)
+
+    with torch.no_grad():
+        next_q = network(next_tensor)
+
+    target = q_values.clone().detach()
+
+    target[action] = reward + gamma * torch.max(next_q)
+
+    loss = loss_fn(q_values, target)
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+# =========================================================
+# DRAW TERMINAL
+# =========================================================
+def draw():
+
+    print("\n" * 25)
+
+    for y in range(HEIGHT):
+
+        row = ""
+
+        # Player paddle
+        if player_y <= y < player_y + PADDLE_SIZE:
+            row += "|"
+        else:
+            row += " "
+
+        # Middle area
+        for x in range(WIDTH - 2):
+
+            if x == ball_x and y == ball_y:
+                row += "O"
+            else:
+                row += " "
+
+        # AI paddle
+        if ai_y <= y < ai_y + PADDLE_SIZE:
+            row += "|"
+        else:
+            row += " "
+
+        print(row)
+
+# =========================================================
+# RESET BALL
+# =========================================================
+def reset_ball():
+    global ball_x, ball_y, ball_dx, ball_dy
+
+    ball_x = WIDTH // 2
+    ball_y = HEIGHT // 2
+
+    ball_dx = random.choice([-1, 1])
+    ball_dy = random.choice([-1, 1])
+
+# =========================================================
+# MAIN LOOP
+# =========================================================
+episode = 0
+
+while True:
+
+    draw()
+
+    # =====================================================
+    # PLAYER INPUT
+    # =====================================================
+    move = input("Move (w/s): ").lower()
+
+    if move == "w" and player_y > 0:
+        player_y -= 1
+
+    elif move == "s" and player_y < HEIGHT - PADDLE_SIZE:
+        player_y += 1
+
+    # =====================================================
+    # AI STATE
+    # =====================================================
+    state = get_state()
+
+    action = choose_action(state)
+
+    # AI movement
+    if action == 0 and ai_y > 0:
+        ai_y -= 1
+
+    elif action == 1 and ai_y < HEIGHT - PADDLE_SIZE:
+        ai_y += 1
+
+    # =====================================================
+    # BALL MOVEMENT
+    # =====================================================
+    ball_x += ball_dx
+    ball_y += ball_dy
+
+    reward = 0
+
+    # Wall bounce
+    if ball_y <= 0 or ball_y >= HEIGHT - 1:
+        ball_dy *= -1
+
+    # Player hit
+    if ball_x == 1:
+        if player_y <= ball_y < player_y + PADDLE_SIZE:
+            ball_dx *= -1
+
+    # AI hit
+    if ball_x == WIDTH - 2:
+
+        if ai_y <= ball_y < ai_y + PADDLE_SIZE:
+            ball_dx *= -1
+            reward = 10
+
+    # AI misses
+    if ball_x >= WIDTH - 1:
+        reward = -20
+        reset_ball()
+
+    # Player misses
+    if ball_x <= 0:
+        reward = 15
+        reset_ball()
+
+    # =====================================================
+    # TRAIN AI
+    # =====================================================
+    next_state = get_state()
+
+    train_step(state, action, reward, next_state)
+
+    # Epsilon decay
+    if epsilon > epsilon_min:
+        epsilon *= epsilon_decay
+
+    episode += 1
+
+    print(f"Episode: {episode}")
+    print(f"Epsilon: {epsilon:.3f}")
